@@ -59,6 +59,38 @@ def github_release():
         logger.debug(f"Action={msg['action']}, keys={msg.keys()}")
         return "We only accept events for new Github releases."
 
+    announce_msg = (
+        f"Received release event: "
+        f"{msg['repository']['owner']['login']}/{msg['repository']['name']}"
+        f" - {msg['release']['tag_name']}"
+    )
+    return process_event(announce_msg, msg)
+
+
+@app.route("/webhooks/github/pull_request")
+def github_pr():
+    msg = request.get_json()
+
+    if not msg:
+        logger.debug(
+            "/webhooks/github/pull_request: We haven't received any JSON data."
+        )
+        return "We haven't received any JSON data."
+
+    allowed_actions = ["opened", "edited", "reopened"]
+    if not (msg.get("action") in allowed_actions):
+        logger.debug(
+            f"/webhooks/github/pull_request: Ignoring pull_request event - {msg['action']}"
+        )
+        return "We only accept events for opened or edited pull_requests."
+
+    announce_msg = (
+        f"Received pull_request event: "
+    )
+    return process_event(announce_msg, msg)
+
+
+def process_event(event, event_announce):
     buffer = StringIO()
     logHandler = logging.StreamHandler(buffer)
     logHandler.setLevel(logging.INFO)
@@ -68,16 +100,11 @@ def github_release():
     logHandler.setFormatter(formatter)
     logger.addHandler(logHandler)
 
-    logger.debug(
-        f"Received release event: "
-        f"{msg['repository']['owner']['login']}/{msg['repository']['name']}"
-        f" - {msg['release']['tag_name']}"
-    )
-
+    logger.debug(event_announce)
     config = Config.get_user_config()
 
     steve = SteveJobs(config)
-    steve.process_message(msg)
+    steve.process_message(event)
 
     logger.removeHandler(logHandler)
     buffer.flush()

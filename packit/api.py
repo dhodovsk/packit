@@ -39,6 +39,9 @@ from packit.sync import sync_files
 from packit.upstream import Upstream
 from packit.utils import assert_existence
 
+from copr.v3 import Client
+from copr.v3.exceptions import CoprNoResultException
+
 logger = logging.getLogger(__name__)
 
 
@@ -389,3 +392,24 @@ class PackitAPI:
         if updates:
             logger.info("\nLatest bodhi updates:")
             logger.info(tabulate(updates, headers=["Update", "Karma", "status"]))
+
+    def copr_build(self, owne):
+
+        client = Client.create_from_config_file()
+        owner = 'packit'
+        project = f"{self.project.namespace}-{self.project.repo}"
+        config_chroots = self.job.metadata.get("chroots")
+
+        # get copr project
+        try:
+            copr_proj = client.project_proxy.get(owner, project)
+            if set(copr_proj.chroot_repos.keys()) != set(config_chroots):
+                client.project_proxy.edit(owner, project, chroots=config_chroots)
+        except CoprNoResultException:
+            client.project_proxy.add(
+                ownername=owner,
+                projectname=project,
+                chroots=config_chroots,
+                decription="Repo for automatic rebuild owned by packit",
+                contact="user-cont-team@redhat.com"
+            )

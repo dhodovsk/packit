@@ -7,6 +7,9 @@ from typing import List, Optional, Tuple, Dict, Type
 from ogr.abstract import GitProject
 from ogr.services.github import GithubProject, GithubService
 
+from copr.v3 import Client
+from copr.v3.exceptions import CoprNoResultException
+
 from packit.api import PackitAPI
 from packit.config import JobConfig, JobTriggerType, JobType, PackageConfig, Config
 from packit.config import get_packit_config_from_repo
@@ -162,3 +165,47 @@ class GithubReleaseHandler(JobHandler):
             dist_git_branch=self.job.metadata.get("dist-git-branch", "master"),
             version=version,
         )
+
+
+@add_to_mapping
+class GithubCoprBuildHandler(JobHandler):
+    name = JobType.copr_build
+    triggers = [JobTriggerType.release, JobTriggerType.pull_request]
+
+    def run(self):
+        # get info
+        client = Client.create_from_config_file()
+        owner = 'packit'
+        project = f"{self.project.namespace}-{self.project.repo}"
+        config_chroots = self.job.metadata.get("chroots")
+
+        # get copr project
+        try:
+            copr_proj = client.project_proxy.get(owner, project)
+            if set(copr_proj.chroot_repos.keys()) != set(config_chroots):
+                client.project_proxy.edit(owner, project, chroots=config_chroots)
+        except CoprNoResultException:
+            client.project_proxy.add(
+                ownername=owner,
+                projectname=project,
+                chroots=config_chroots,
+                decription="Repo for automatic rebuild owned by packit",
+                contact="user-cont-team@redhat.com"
+            )
+
+    # def handle_pull_request(self):
+    #
+    # def handle_release(self):
+
+        # run build
+        if self.event["action"] == 'published' and "release" in self.event.keys():
+            clone_url = self.event["repository"]["html_url"]
+            committish = self.event["release"]["tag_name"]
+        else:
+            clone_url = nested_get(self.event, 'pull_request', 'head', 'repo', 'clone_url')
+            committish = nested_get(self.event, 'pull_request', 'head', 'sha')
+
+        # report
+        build = client.build_proxy.create_from_scm(owner, project, clone_url, committish=committish)
+
+        gp = GithubProject()

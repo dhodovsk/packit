@@ -174,7 +174,7 @@ class JobType(Enum):
     """ Type of the job to execute: pick the correct handler """
 
     propose_downstream = "propose_downstream"
-    build = "build"
+    copr_build = "copr_build"
 
 
 class JobTriggerType(Enum):

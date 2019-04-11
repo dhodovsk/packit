@@ -21,3 +21,7 @@ jobs:
   trigger: release
   metadata:
     dist_git_branch: f29
+- job: copr_build:
+  tigger: pull_request
+  metadata:
+    source_copr_repo: lachmanfrantisek/packit
