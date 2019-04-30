@@ -135,11 +135,7 @@ def test_copr_pr_handle(pr_event):
     flexmock(PackitAPI, sync_release=lambda dist_git_branch, version: None)
 
     flexmock(PackitAPI).should_receive("run_copr_build").with_args(
-        owner="Bilbo",
-        project="keg",
-        committish="34c5c7793cb3b279e22454cb6750c80560547b3a",
-        clone_url="https://github.com/Codertocat/Hello-World.git",
-        chroots=["beer-again"],
+        owner="Bilbo", project="keg", chroots=["beer-again"]
     ).and_return(1, "http://shire").once()
     flexmock(GithubProject).should_receive("pr_comment").with_args(
         pr_event["number"], "Triggered copr build (ID:1).\nMore info: http://shire"

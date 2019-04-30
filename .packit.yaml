@@ -25,3 +25,11 @@ jobs:
     dist_git_branch: f29
 - job: sync_from_downstream
   trigger: commit
+- job: copr_build
+  trigger: pull_request
+  metadata:
+    targets:
+      - fedora-rawhide-x86_64
+    owner: dhodovsk
+    timeout: 300
+    project: packit

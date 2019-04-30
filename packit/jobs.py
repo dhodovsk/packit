@@ -8,7 +8,7 @@ from ogr.abstract import GitProject, GitService
 
 from packit.api import PackitAPI
 from packit.config import JobConfig, JobTriggerType, JobType, PackageConfig, Config
-from packit.config import get_packit_config_from_repo
+from packit.config import get_packit_config_from_repo, get_local_package_config
 from packit.distgit import DistGit
 from packit.exceptions import PackitException
 from packit.local_project import LocalProject
@@ -113,7 +113,10 @@ class SteveJobs:
             gh_proj = get_github_project(
                 self.config, repo=base_repo_name, namespace=base_repo_namespace
             )
-            package_config = get_packit_config_from_repo(gh_proj, base_ref)
+            # package_config = get_packit_config_from_repo(gh_proj, base_ref)
+            package_config = get_local_package_config(
+                "/home/dhodovsk/repos/github.com/packit-service/packit/"
+            )
             https_url = event["repository"]["html_url"]
             package_config.upstream_project_url = https_url
             return JobTriggerType.pull_request, package_config, gh_proj
@@ -370,6 +373,23 @@ class GithubCoprBuildHandler(JobHandler):
     name = JobType.copr_build
     triggers = [JobTriggerType.pull_request, JobTriggerType.release]
 
+    class BuildStatusReporter:
+        def __init__(self, gh_proj, commit_sha, build_id, target_url):
+            self.gh_proj = gh_proj
+            self.commit_sha = commit_sha
+            self.build_id = build_id
+            self.target_url = target_url
+
+        def report(self, state, description):
+            logger.debug(f"Reporting state of copr build ID={self.build_id} to {state}")
+            self.gh_proj.set_commit_status(
+                self.commit_sha,
+                state,
+                self.target_url,
+                description,
+                "packit/copr_build",
+            )
+
     def handle_release(self):
         if not self.job.metadata.get("targets"):
             logger.error(
@@ -379,7 +399,6 @@ class GithubCoprBuildHandler(JobHandler):
 
         local_project = LocalProject(git_project=self.project, ref=tag_name)
         api = PackitAPI(self.config, self.package_config, local_project)
-
         build_id, repo_url = api.run_copr_build(
             owner=self.job.metadata.get("owner") or "packit",
             project=self.job.metadata.get("project")
@@ -389,13 +408,10 @@ class GithubCoprBuildHandler(JobHandler):
 
         # report
         commit_sha = self.project.get_sha_from_tag(tag_name)
-        msg = f"Copr build(ID {build_id}) triggered\nMore info: {repo_url}"
-        self.project.commit_comment(commit=commit_sha, body=msg)
-        build_result = api.watch_copr_build(
-            build_id, int(self.job.metadata.get("timeout")) or 60 * 60 * 2
+        r = self.BuildStatusReporter(self.project, commit_sha, build_id, repo_url)
+        api.watch_copr_build(
+            build_id, int(self.job.metadata.get("timeout")) or 60 * 60 * 2, r.report
         )
-        msg = f"Copr build {build_id} ended with result {build_result}"
-        self.project.commit_comment(commit=commit_sha, body=msg)
 
     def handle_pull_request(self):
         if not self.job.metadata.get("targets"):
@@ -417,31 +433,11 @@ class GithubCoprBuildHandler(JobHandler):
         )
 
         # report
-        msg = (
-            f"RPM build was triggered in the Fedora COPR build service:\n\n"
-            f"* ID: {build_id}\n"
-            f"* COPR repository: {repo_url}"
+        commit_sha = nested_get(self.event, "pull_request", "head", "sha")
+        r = self.BuildStatusReporter(self.project, commit_sha, build_id, repo_url)
+        api.watch_copr_build(
+            build_id, int(self.job.metadata.get("timeout")) or 60 * 60 * 2, r.report
         )
-        logger.info(msg)
-
-        target_repo_name = nested_get(
-            self.event, "pull_request", "base", "repo", "name"
-        )
-        target_repo_namespace = nested_get(
-            self.event, "pull_request", "base", "repo", "owner", "login"
-        )
-        pr_target_project = get_github_project(
-            self.config,
-            repo=target_repo_name,
-            namespace=target_repo_namespace,
-            service=self.upstream_service,
-        )
-        pr_target_project.pr_comment(self.event["number"], msg)
-        build_result = api.watch_copr_build(
-            build_id, int(self.job.metadata.get("timeout")) or 60 * 60 * 2
-        )
-        msg = f"Copr build {build_id} ended with result: `{build_result}`"
-        pr_target_project.pr_comment(self.event["number"], msg)
 
     def run(self):
         if self.triggered_by == JobTriggerType.pull_request:
