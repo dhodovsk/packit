@@ -33,7 +33,7 @@ from packit.constants import CONFIG_FILE_NAMES, PROD_DISTGIT_URL
 from packit.config.base_config import BaseConfig
 from packit.config.job_config import JobConfig
 from packit.config.sync_files_config import SyncFilesConfig, SyncFilesItem
-from packit.exceptions import PackitConfigException, PackitException
+from packit.exceptions import PackitConfigException
 from packit.schema import PACKAGE_CONFIG_SCHEMA
 
 logger = logging.getLogger(__name__)
@@ -278,7 +278,7 @@ def get_local_package_config(
                     logger.error(
                         f"Cannot load package config '{config_file_name_full}'."
                     )
-                    raise Exception(f"Cannot load package config: {ex}.")
+                    raise PackitConfigException(f"Cannot load package config: {ex}.")
                 return parse_loaded_config(
                     loaded_config=loaded_config, config_file_path=str(config_file_name)
                 )
@@ -313,7 +313,7 @@ def get_package_config_from_repo(
             loaded_config = safe_load(config_file_content)
         except Exception as ex:
             logger.error(f"Cannot load package config '{config_file_name}'.")
-            raise PackitException(f"Cannot load package config: {ex}.")
+            raise PackitConfigException(f"Cannot load package config: {ex}.")
         return parse_loaded_config(
             loaded_config=loaded_config, config_file_path=config_file_name
         )
@@ -338,4 +338,4 @@ def parse_loaded_config(
         return package_config
     except Exception as ex:
         logger.error(f"Cannot parse package config. {ex}.")
-        raise Exception(f"Cannot parse package config: {ex}.")
+        raise PackitConfigException(f"Cannot parse package config: {ex}.")
